@@ -66,7 +66,7 @@ class LandingPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     TextButton(
-                      onPressed: () => Navigator.pushNamed(context, '/signup'),
+                      onPressed: () => Navigator.pushNamed(context, '/home'),
                       child: const Text("Créer un compte"),
                     ),
                     const SizedBox(height: 8),

@@ -6,7 +6,8 @@ class SettingTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  const SettingTile({super.key,
+  const SettingTile({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../../../services/auth/authservices.dart';
+
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -17,6 +21,9 @@ class _SignupPageState extends State<SignupPage> {
 
   String? _group; // A, B, AB, O
   String? _rh; // +, -
+  bool _loading = false;
+
+  final _auth = FirebaseAuth.instance;
 
   @override
   void dispose() {
@@ -28,7 +35,22 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  void _submit() {
+  String _mapAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Email invalide.';
+      case 'email-already-in-use':
+        return 'Email déjà utilisé.';
+      case 'weak-password':
+        return 'Mot de passe trop faible.';
+      case 'operation-not-allowed':
+        return 'Méthode de connexion désactivée.';
+      default:
+        return 'Erreur: ${e.message ?? e.code}';
+    }
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_group == null || _rh == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -36,11 +58,40 @@ class _SignupPageState extends State<SignupPage> {
       );
       return;
     }
-    // TODO: envoyer données au backend
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Inscription… (demo)')));
-    Navigator.pushReplacementNamed(context, '/login');
+    FocusScope.of(context).unfocus();
+    setState(() => _loading = true);
+
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: _emailCtrl.text.trim(),
+        password: _pwdCtrl.text,
+      );
+
+      await cred.user?.updateDisplayName(_nameCtrl.text.trim());
+
+      await UserService.I.createProfile(
+        user: cred.user!,
+        name: _nameCtrl.text,
+        phone: _phoneCtrl.text,
+        bloodGroup: _group!,
+        rh: _rh!,
+        role: 'donneur', // par défaut
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Compte créé. Bienvenue !')),
+      );
+      // L’AuthGate sur /home chargera le profil et affichera HomeShell
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_mapAuthError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -60,22 +111,18 @@ class _SignupPageState extends State<SignupPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-
                 ClipRRect(
                   borderRadius: BorderRadius.circular(18),
                   child: AspectRatio(
-                      aspectRatio: 15 / 10,
-                      child: Image.asset(
-                          "assets/img/Blood donation-bro.png"
-                      )
+                    aspectRatio: 15 / 10,
+                    child: Image.asset('assets/img/Blood donation-bro.png', fit: BoxFit.cover),
                   ),
                 ),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _nameCtrl,
                   decoration: const InputDecoration(labelText: 'Nom complet'),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Nom obligatoire'
-                      : null,
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Nom obligatoire' : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -83,9 +130,7 @@ class _SignupPageState extends State<SignupPage> {
                   keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(labelText: 'Téléphone'),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Téléphone obligatoire';
-                    }
+                    if (v == null || v.trim().isEmpty) return 'Téléphone obligatoire';
                     final ok = RegExp(r'^[0-9+\s]{8,}$').hasMatch(v.trim());
                     if (!ok) return 'Numéro invalide';
                     return null;
@@ -95,14 +140,10 @@ class _SignupPageState extends State<SignupPage> {
                 TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email (optionnel)',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Email'),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return null;
-                    final ok = RegExp(
-                      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                    ).hasMatch(v.trim());
+                    if (v == null || v.trim().isEmpty) return 'Email obligatoire';
+                    final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim());
                     if (!ok) return 'Email invalide';
                     return null;
                   },
@@ -155,29 +196,30 @@ class _SignupPageState extends State<SignupPage> {
                 TextFormField(
                   controller: _confirmCtrl,
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirmer le mot de passe',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Confirmer le mot de passe'),
                   validator: (v) {
-                    if (v != _pwdCtrl.text)
-                      return 'Les mots de passe ne correspondent pas';
+                    if (v != _pwdCtrl.text) return 'Les mots de passe ne correspondent pas';
                     return null;
                   },
                 ),
                 const SizedBox(height: 18),
                 ElevatedButton(
-                  onPressed: _submit,
+                  onPressed: _loading ? null : _submit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: cs.primary,
                     foregroundColor: cs.onPrimary,
+                    minimumSize: const Size.fromHeight(52),
                   ),
-                  child: const Text("S'inscrire"),
+                  child: _loading
+                      ? const SizedBox(
+                      height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text("S'inscrire"),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton(
-                  onPressed: () =>
-                      Navigator.pushReplacementNamed(context, '/login'),
-                  child: const Text('J\'ai déjà un compte'),
+                  onPressed:
+                  _loading ? null : () => Navigator.pushReplacementNamed(context, '/login'),
+                  child: const Text("J'ai déjà un compte"),
                 ),
               ],
             ),
