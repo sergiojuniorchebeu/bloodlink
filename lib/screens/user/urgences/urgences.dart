@@ -1,90 +1,68 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
+import '../request/request_details_page.dart';
 
 class UrgencesPage extends StatelessWidget {
   const UrgencesPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: [
-        _SearchBarCard(
-          hint: 'Rechercher hôpital / groupe…',
-          onTapFilter: () {},
-        ),
-        const SizedBox(height: 12),
-        _UrgenceCard(
-          title: 'O− urgent – Laquintinie',
-          city: 'Douala • 2.1 km',
-          chips: const ['O−', '2 poches', 'Avant 16:00'],
-          onTap: () {},
-        ),
-        _UrgenceCard(
-          title: 'A+ – Hôpital Général',
-          city: 'Douala • 5.4 km',
-          chips: const ['A+', '1 poche', 'Avant 18:30'],
-          onTap: () {},
-        ),
-        _UrgenceCard(
-          title: 'B− – Clinique du Littoral',
-          city: 'Bonapriso • 3.2 km',
-          chips: const ['B−', '3 poches', 'Demain 09:00'],
-          onTap: () {},
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: TextButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Actualiser'),
-          ),
-        )
-      ],
-    );
-  }
-}
+    // Toutes les demandes approuvées / ouvertes
+    final q = FirebaseFirestore.instance
+        .collection('requests')
+        .where('status', whereIn: ['approved', 'open']);
 
-class _SearchBarCard extends StatelessWidget {
-  final String hint;
-  final VoidCallback onTapFilter;
-  const _SearchBarCard({required this.hint, required this.onTapFilter});
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: q.snapshots(),
+      builder: (_, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F7F8),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(Icons.search_rounded, size: 22),
-                const SizedBox(width: 8),
-                Text(hint, style: TextStyle(color: Colors.black.withOpacity(0.55))),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTapFilter,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(Icons.tune_rounded, color: cs.primary),
-          ),
-        ),
-      ],
+        var docs = snap.data?.docs ?? [];
+
+        // Tri local DESC par createdAt (évite index composite)
+        docs.sort((a, b) {
+          final ta = a.data()['createdAt'] as Timestamp?;
+          final tb = b.data()['createdAt'] as Timestamp?;
+          final va = ta?.millisecondsSinceEpoch ?? 0;
+          final vb = tb?.millisecondsSinceEpoch ?? 0;
+          return vb.compareTo(va);
+        });
+
+        if (docs.isEmpty) {
+          return const Center(child: Text('Aucune demande disponible pour le moment.'));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          itemCount: docs.length,
+          itemBuilder: (_, i) {
+            final m = docs[i].data();
+            final deadline = (m['deadline'] as Timestamp?)?.toDate();
+            final chips = <String>[
+              '${m['bloodGroup'] ?? '-'}${m['rhesus'] ?? ''}',
+              '${m['unitsNeeded'] ?? '?'} poches',
+              if (deadline != null) 'Avant $deadline',
+            ];
+
+            return _UrgenceCard(
+              title:
+              '${m['bloodGroup'] ?? '-'}${m['rhesus'] ?? ''} – ${m['patientAlias'] ?? 'Patient'}',
+              city:
+              '${m['city'] ?? '—'} • ${m['unitsMatched'] ?? 0}/${m['unitsNeeded'] ?? 0}',
+              chips: chips,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RequestDetailPage(requestId: m['id']),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -133,7 +111,9 @@ class _UrgenceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
                     const SizedBox(height: 4),
                     Text(city, style: const TextStyle(color: Colors.black54)),
                     const SizedBox(height: 10),
@@ -141,23 +121,26 @@ class _UrgenceCard extends StatelessWidget {
                       spacing: 8,
                       runSpacing: -6,
                       children: chips
-                          .map(
-                            (c) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF7F7F8),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(c, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          .map((c) => Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F7F8),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                      )
+                        child: Text(c,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ))
                           .toList(),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded, color: Colors.black.withOpacity(0.3)),
+              Icon(Icons.chevron_right_rounded,
+                  color: Colors.black.withOpacity(0.3)),
             ],
           ),
         ),

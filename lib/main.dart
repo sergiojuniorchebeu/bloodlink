@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:projetdonsanguin/screens/user/auth/login_page.dart';
-import 'package:projetdonsanguin/screens/user/auth/sign_up.dart';
-import 'package:projetdonsanguin/screens/user/home/home.dart';
-import 'package:projetdonsanguin/screens/user/landing_page.dart';
-import 'package:projetdonsanguin/services/auth/authservices.dart';
+import 'package:projetdonsanguin/screens/admin/pages/admin_login.dart';
 
 import 'firebase_options.dart';
 
+// Admin (web)
+import 'package:projetdonsanguin/screens/admin/admin_gate.dart';
+
+
+// User (mobile/desktop)
+import 'package:projetdonsanguin/screens/user/landing_page.dart';
+import 'package:projetdonsanguin/screens/user/auth/login_page.dart';
+import 'package:projetdonsanguin/screens/user/auth/sign_up.dart';
+import 'package:projetdonsanguin/screens/user/home/home.dart';
+
+// Services
+import 'package:projetdonsanguin/services/auth/authservices.dart'; // doit exposer UserService.I.getProfile()
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +35,7 @@ class BloodLinkApp extends StatelessWidget {
       seedColor: const Color(0xFFD32F2F),
       brightness: Brightness.light,
     );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'BloodLink',
@@ -48,17 +58,27 @@ class BloodLinkApp extends StatelessWidget {
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         ),
       ),
-      home: const LandingPage(), // ✅ Démarre sur la Landing
+
+      // ✅ On démarre via la route racine (pas de `home:` pour éviter le conflit '/')
+      initialRoute: '/',
+
       routes: {
+        // Basculer selon la plateforme
+        '/': (_) => kIsWeb ? const AdminLoginPage() : const LandingPage(),
+
+        // Utilisateur (mobile/desktop)
         '/login': (_) => const LoginPage(),
         '/signup': (_) => const SignupPage(),
-        '/home': (_) => const _AuthGate(), // AuthGate redirige vers HomeShell ou Login
+        '/home': (_) => const _AuthGate(),
+
+        // Admin (web)
+        '/admin': (_) => const AdminGate(),
+        '/admin-login': (_) => const AdminLoginPage(),
       },
     );
   }
 }
 
-/// Vérifie l’auth puis charge le profil Firestore pour passer isVerified + role à HomeShell.
 class _AuthGate extends StatelessWidget {
   const _AuthGate();
 

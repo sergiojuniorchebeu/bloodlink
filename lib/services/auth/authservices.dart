@@ -25,8 +25,9 @@ class UserService {
       'bloodGroup': bloodGroup, // "O","A","B","AB"
       'rhesus': rh,             // "+","-"
       'role': role,             // 'donneur' | 'receveur' | 'admin'
-      'isVerified': false,      // validé par admin
-      'verificationStatus': 'unverified',
+      'isVerified': false,
+      'verificationStatus': 'unverified', // 'pending' | 'verified' | 'rejected'
+      'available': true,
       'city': null,
       'radiusKm': 20,
       'lastDonationAt': null,
@@ -35,9 +36,58 @@ class UserService {
     }, SetOptions(merge: true));
   }
 
+  Stream<Map<String, dynamic>?> streamProfile(String uid) =>
+      _col.doc(uid).snapshots().map((d) => d.data());
+
   Future<Map<String, dynamic>?> getProfile(String uid) async {
     final snap = await _col.doc(uid).get();
     return snap.data();
+  }
+
+  Future<void> updateProfile(String uid, {
+    String? name,
+    String? phone,
+    String? bloodGroup,
+    String? rh,
+  }) async {
+    final data = <String, dynamic>{
+      if (name != null) 'name': name.trim(),
+      if (phone != null) 'phone': phone.trim(),
+      if (bloodGroup != null) 'bloodGroup': bloodGroup,
+      if (rh != null) 'rhesus': rh,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    await _col.doc(uid).update(data);
+  }
+
+  Future<void> setAvailability(String uid, bool available) async {
+    await _col.doc(uid).update({
+      'available': available,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> setCityRadius(String uid, {required String city, required int radiusKm}) async {
+    await _col.doc(uid).update({
+      'city': city,
+      'radiusKm': radiusKm,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> markVerificationPending(String uid, {required String idUrl}) async {
+    await _db.collection('verification_requests').doc(uid).set({
+      'uid': uid,
+      'status': 'pending',
+      'idImageUrl': idUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await _col.doc(uid).update({
+      'verificationStatus': 'pending',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> touchUpdatedAt(String uid) async {

@@ -30,7 +30,6 @@ class ChipStatus extends StatelessWidget {
         return ChipStatus.rejected();
     }
     if (isVerified == true) return ChipStatus.verified();
-    if (isVerified == false) return ChipStatus.unknown();
     return ChipStatus.unknown();
   }
 
